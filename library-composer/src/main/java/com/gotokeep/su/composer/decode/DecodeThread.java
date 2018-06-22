@@ -16,6 +16,7 @@ import android.view.Surface;
 public final class DecodeThread implements Handler.Callback {
     private String mimeType;
     private MediaCodec decoder;
+    private Surface outputSurface;
     private boolean needReconfigure = false;
 
     private HandlerThread internalThread;
@@ -41,6 +42,10 @@ public final class DecodeThread implements Handler.Callback {
 
     public void release() {
 
+    }
+
+    public Surface getOutputSurface() {
+        return outputSurface;
     }
 
     @Override

@@ -13,7 +13,7 @@ class TimelineTrack<T : TimelineItem>(@field:TrackType
                                       private val trackType: Int) {
 
     private val items = mutableListOf<T>()
-    val timeRange = TimeRange(Time.ZERO, Time.ZERO)
+    private val timeRange = TimeRange(Time.ZERO, Time.ZERO)
 
     @IntDef(TRACK_TYPE_SOURCE, TRACK_TYPE_TRANSITION, TRACK_TYPE_FILTER, TRACK_TYPE_LAYER)
     @Retention(AnnotationRetention.SOURCE)
@@ -28,7 +28,7 @@ class TimelineTrack<T : TimelineItem>(@field:TrackType
         updateTimeRange()
     }
 
-    fun removeITem(item: T) {
+    fun removeItem(item: T) {
         items.remove(item)
         updateTimeRange()
     }
@@ -39,9 +39,9 @@ class TimelineTrack<T : TimelineItem>(@field:TrackType
 
     private fun updateTimeRange() {
         var minStart = Time.INVALID_TIME
-        var maxEnd = Time.ZERO;
+        var maxEnd = Time.ZERO
         for (item in items) {
-            if (minStart.compareTo(item.timeRange.start) < 0) {
+            if (minStart < item.timeRange.start) {
                 minStart = item.timeRange.start
             }
             if (maxEnd < item.timeRange.rangeEnd) {

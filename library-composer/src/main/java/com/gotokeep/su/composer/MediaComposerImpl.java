@@ -6,6 +6,8 @@ import android.os.Message;
 import android.view.Surface;
 
 import com.gotokeep.su.composer.composition.Composition;
+import com.gotokeep.su.composer.decode.DecodeEngine;
+import com.gotokeep.su.composer.render.RenderEngine;
 import com.gotokeep.su.composer.source.MediaTrack;
 import com.gotokeep.su.composer.time.TimeRange;
 import com.gotokeep.su.composer.timeline.Timeline;
@@ -23,6 +25,8 @@ import java.util.List;
 class MediaComposerImpl implements MediaComposer, Handler.Callback, ComposerTarget.RenderTargetAvailableListener {
     private Timeline timeline;
     private ComposerTarget composerTarget;
+    private DecodeEngine decodeEngine;
+    private RenderEngine renderEngine;
 
     private EventDispatcher eventDispatcher;
 
@@ -36,6 +40,8 @@ class MediaComposerImpl implements MediaComposer, Handler.Callback, ComposerTarg
         internalThread = new HandlerThread("ComposerImpl");
         internalThread.start();
         handler = new Handler(internalThread.getLooper(), this);
+        decodeEngine = new DecodeEngine();
+
     }
 
     @Override

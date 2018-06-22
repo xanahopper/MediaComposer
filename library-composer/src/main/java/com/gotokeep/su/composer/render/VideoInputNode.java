@@ -78,7 +78,7 @@ public class VideoInputNode extends VideoRenderNode {
             AttributeData.DEFAULT_ATTRIBUTE_DATA.draw();
             targetFrameAvailable = true;
         }
-        source.requestDecode(renderTimeUs);
+//        source.requestDecode(renderTimeUs);
     }
 
     @Override

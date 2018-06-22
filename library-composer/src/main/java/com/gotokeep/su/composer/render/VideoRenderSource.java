@@ -3,6 +3,8 @@ package com.gotokeep.su.composer.render;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 
+import com.gotokeep.su.composer.decode.DecodeEngine;
+import com.gotokeep.su.composer.decode.DecodeRequest;
 import com.gotokeep.su.composer.gles.RenderTexture;
 import com.gotokeep.su.composer.source.MediaTrack;
 import com.gotokeep.su.composer.time.Time;
@@ -34,7 +36,7 @@ public final class VideoRenderSource {
         sourceExtractor.setDataSource(sourceTrack.getSource().toString());
         sourceExtractor.selectTrack(sourceTrack.getTrackIndex());
         sourceFormat = sourceExtractor.getTrackFormat(sourceTrack.getTrackIndex());
-        if (!sourceFormat.containsKey(MediaFormat.KEY_WIDTH)) {
+        if (!sourceFormat.containsKey(MediaFormat.KEY_WIDTH) || !sourceFormat.containsKey(MediaFormat.KEY_HEIGHT)) {
             throw new IllegalArgumentException("Media in track does not contain size.");
         }
         videoSize = new Size(sourceFormat.getInteger(MediaFormat.KEY_WIDTH),
@@ -63,7 +65,9 @@ public final class VideoRenderSource {
         return videoSize;
     }
 
-    public void requestDecode(Time renderTimeUs) {
-
+    public void requestDecode(DecodeEngine decodeEngine, Time renderTimeUs) {
+        DecodeRequest request = DecodeRequest.obtain(sourceTrack, renderTimeUs.value);
+        decodeEngine.sendVideoRequest(request, sourceTexture.getSurface());
+        sourceTexture.awaitFrameAvailable();
     }
 }
