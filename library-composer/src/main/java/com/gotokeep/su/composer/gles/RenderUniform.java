@@ -12,28 +12,30 @@ public final class RenderUniform {
     public static final int TYPE_FLOAT_ARRAY = 3;
     public static final int TYPE_MATRIX = 4;
 
+    public String name;
     public int type;
     private Object data;
 
-    public RenderUniform(int type, Object data) {
+    public RenderUniform(String name, int type, Object data) {
+        this.name = name;
         this.type = type;
         this.data = data;
     }
 
-    public RenderUniform(int data) {
-        this(TYPE_INT, data);
+    public RenderUniform(String name, int data) {
+        this(name, TYPE_INT, data);
     }
 
-    public RenderUniform(float data) {
-        this(TYPE_FLOAT, data);
+    public RenderUniform(String name, float data) {
+        this(name, TYPE_FLOAT, data);
     }
 
-    public RenderUniform(int[] data) {
-        this(TYPE_INT_ARRAY, data);
+    public RenderUniform(String name, int[] data) {
+        this(name, TYPE_INT_ARRAY, data);
     }
 
-    public RenderUniform(float[] data) {
-        this(TYPE_FLOAT_ARRAY, data);
+    public RenderUniform(String name, float[] data) {
+        this(name, TYPE_FLOAT_ARRAY, data);
     }
 
     public int getIntData() {

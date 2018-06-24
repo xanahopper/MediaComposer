@@ -7,7 +7,10 @@ import android.media.AudioTrack;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMuxer;
 import android.opengl.EGLSurface;
+import android.opengl.GLES20;
+import android.opengl.Matrix;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -20,7 +23,11 @@ import android.view.TextureView;
 
 import com.gotokeep.su.composer.demo.SampleActivity;
 import com.gotokeep.su.composer.demo.source.SourceProvider;
+import com.gotokeep.su.composer.gles.AttributeData;
 import com.gotokeep.su.composer.gles.EglCore;
+import com.gotokeep.su.composer.gles.ProgramObject;
+import com.gotokeep.su.composer.gles.RenderTexture;
+import com.gotokeep.su.composer.gles.RenderUniform;
 import com.gotokeep.su.composer.time.Time;
 import com.gotokeep.su.composer.time.TimeRange;
 import com.gotokeep.su.composer.util.MediaClock;
@@ -33,19 +40,22 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
 
 /**
  * @author xana/cuixianming
  * @version 1.0
  * @since 2018-06-22 18:15
  */
-public class CommonDecodeActivity extends SampleActivity implements Handler.Callback, TextureView.SurfaceTextureListener {
+public class CommonDecodeActivity extends SampleActivity implements TextureView.SurfaceTextureListener {
     private static final String TAG = CommonDecodeActivity.class.getSimpleName();
     public static final int TIMEOUT_US = 1000;
     private MediaClock playClock = new MediaClock();
     private MediaClock audioClock = new MediaClock();
     private Decoder videoDecoder = new Decoder();
     private Decoder audioDecoder = new Decoder();
+    private Semaphore videoSem = new Semaphore(1);
+    private Semaphore audioSem = new Semaphore(1);
 
     private Map<String, MediaExtractor> videoExtractors = new HashMap<>();
     private Map<String, MediaExtractor> audioExtractors = new HashMap<>();
@@ -57,9 +67,16 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
     private EglCore eglCore;
     private EGLSurface eglSurface;
     private Surface outputSurface;
+    private Surface decodeSurface;
+    private RenderTexture decodeTexture;
+    private ProgramObject renderProgram;
+    private AttributeData renderAttribData = new AttributeData();
+    private RenderUniform textureUniform = new RenderUniform(ProgramObject.UNIFORM_TEXTURE, RenderUniform.TYPE_INT, 0);
+    private RenderUniform transformMatrixUniform;
 
+    private RenderThread renderThread;
     private HandlerThread videoThread;
-    private Handler videoHandler;
+    private VideoHandler videoHandler;
 
     private HandlerThread audioThread;
     private AudioHandler audioHandler;
@@ -68,13 +85,26 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
     private Handler playHandler;
     private PlayHandlerCallback playCallback = new PlayHandlerCallback();
 
+    private static final String EXTERNAL_FRAGMENT_SHADER = "" +
+            "#extension GL_OES_EGL_image_external : require\n" +
+            "precision mediump float;\n" +
+            "uniform samplerExternalOES uTexture;\n" +
+            "varying vec2 vTexCoords;\n" +
+            "void main() { \n" +
+            "    gl_FragColor = texture2D(uTexture, vTexCoords);\n" +
+            "}\n";
+
     private static final int MSG_SETUP = 861;
     private static final int MSG_SET_SURFACE = 879;
     private static final int MSG_PREPARE = 154;
     private static final int MSG_PLAY = 706;
     private static final int MSG_DO_NEXT = 722;
+    private static final int MSG_QUIT = 763;
     private static final int MSG_VIDEO_RENDERED = 831;
     private static final int MSG_AUDIO_RENDERED = 757;
+    private static final int MSG_AUDIO_EOS = 970;
+    private static final int MSG_VIDEO_EOS = 699;
+    private static final int MSG_FRAME_AVAILABLE = 169;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,7 +120,9 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
 
         videoThread = new HandlerThread("VideoThread");
         videoThread.start();
-        videoHandler = new Handler(videoThread.getLooper(), this);
+        videoHandler = new VideoHandler(videoThread.getLooper());
+
+        renderThread = new RenderThread();
 
         playHandler.sendEmptyMessage(MSG_PREPARE);
         playHandler.sendEmptyMessage(MSG_PLAY);
@@ -104,52 +136,10 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
         super.onDestroy();
     }
 
-    @Override
-    public boolean handleMessage(Message msg) {
-        switch (msg.what) {
-            case MSG_SETUP:
-                setup();
-                break;
-            case MSG_SET_SURFACE:
-                setSurfaceInternal((Surface) msg.obj);
-                break;
-        }
-        return false;
-    }
-
-    private void setup() {
-        eglCore = new EglCore();
-        if (previewView.isAvailable()) {
-            videoHandler.obtainMessage(MSG_SET_SURFACE, new Surface(previewView.getSurfaceTexture())).sendToTarget();
-        } else {
-            videoHandler.obtainMessage(MSG_SET_SURFACE, null).sendToTarget();
-        }
-    }
-
-    private void setSurfaceInternal(Surface surface) {
-        if (eglCore == null) {
-            videoHandler.sendEmptyMessage(MSG_SETUP);
-            return;
-        }
-        if (eglSurface != null) {
-            eglCore.releaseSurface(eglSurface);
-        }
-        if (outputSurface != null && outputSurface != surface) {
-            outputSurface.release();
-            outputSurface = null;
-        }
-        if (surface == null) {
-            eglSurface = eglCore.createOffscreenSurface(1, 1);
-        } else {
-            outputSurface = surface;
-            eglSurface = eglCore.createWindowSurface(surface);
-        }
-        eglCore.makeCurrent(eglSurface);
-    }
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-        videoHandler.obtainMessage(MSG_SET_SURFACE, new Surface(surface)).sendToTarget();
+        videoHandler.obtainMessage(MSG_SET_SURFACE, width, height, new Surface(surface)).sendToTarget();
     }
 
     @Override
@@ -169,6 +159,7 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
 
     private class PlayHandlerCallback implements Handler.Callback {
         int sourceIndex = 0;
+        long minTimeUs = 0;
         long videoTimeUs = 0;
         long audioTimeUs = 0;
 
@@ -181,8 +172,38 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                 case MSG_PLAY:
                     play();
                     break;
+                case MSG_AUDIO_EOS:
+                    sourceIndex += 1;
+                    if (sourceIndex < audioTrackSources.size()) {
+                        audioHandler.obtainMessage(MSG_DO_NEXT, audioTrackSources.get(sourceIndex)).sendToTarget();
+                    }
+                    break;
+                case MSG_AUDIO_RENDERED:
+                    syncAudio((Decoder) msg.obj);
+                    break;
+                case MSG_VIDEO_RENDERED:
+                    syncVideo((Decoder) msg.obj);
+                    break;
             }
             return false;
+        }
+
+        private void syncVideo(Decoder videoDecoder) {
+            MediaCodec.BufferInfo info = videoDecoder.bufferInfo;
+            videoTimeUs = info.presentationTimeUs;
+            if (videoTimeUs <= audioTimeUs) {
+                Log.d(TAG, "syncVideo: " + videoTimeUs + ", " + audioTimeUs);
+                videoSem.release();
+            }
+        }
+
+        private void syncAudio(Decoder audioDecoder) {
+            MediaCodec.BufferInfo info = audioDecoder.bufferInfo;
+            audioTimeUs = info.presentationTimeUs;
+            if (videoTimeUs <= info.presentationTimeUs) {
+                videoSem.release();
+            }
+            audioSem.release();
         }
 
         private void prepare() {
@@ -215,7 +236,7 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                         videoExtractor.selectTrack(videoIndex);
                     }
                     if (audioIndex >= 0) {
-                        audioTrackSource = new TrackSource(source, audioIndex, audioMime, videoExtractor.getTrackFormat(audioIndex));
+                        audioTrackSource = new TrackSource(source, audioIndex, audioMime, audioExtractor.getTrackFormat(audioIndex));
                         audioExtractor.selectTrack(audioIndex);
                     }
                     if (videoTrackSource != null) {
@@ -243,6 +264,207 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
         }
     }
 
+    private class RenderThread extends Thread {
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    decodeTexture.awaitFrameAvailable();
+                    Log.d(TAG, "Frame");
+                    videoHandler.obtainMessage(MSG_FRAME_AVAILABLE, decodeTexture).sendToTarget();
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private class VideoHandler extends Handler {
+        TrackSource trackSource;
+        public VideoHandler(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case MSG_SETUP:
+                    setup();
+                    break;
+                case MSG_SET_SURFACE:
+                    setSurfaceInternal((Surface) msg.obj, msg.arg1, msg.arg2);
+                    break;
+                case MSG_DO_NEXT:
+                    decode((TrackSource) msg.obj);
+                    break;
+                case MSG_FRAME_AVAILABLE:
+                    render((RenderTexture) msg.obj);
+                    break;
+                case MSG_QUIT:
+                    removeCallbacksAndMessages(null);
+                    return;
+            }
+            super.handleMessage(msg);
+        }
+
+        private void render(RenderTexture texture) {
+
+            if (texture.isFrameAvailable()) {
+                Log.d(TAG, "render Frame");
+                float texCoords[] = new float[16];
+                Matrix.setIdentityM(texCoords, 0);
+                texture.updateTexImage();
+                texture.bind(0);
+                renderProgram.use(renderAttribData);
+                renderProgram.setUniform(textureUniform);
+                renderProgram.setUniform(new RenderUniform(ProgramObject.UNIFORM_TEXCOORD_MATRIX, RenderUniform.TYPE_MATRIX, texCoords));
+                renderProgram.setUniform(new RenderUniform(ProgramObject.UNIFORM_TRANSFORM_MATRIX, RenderUniform.TYPE_MATRIX, texture.getTransitionMatrix()));
+
+                renderAttribData.draw();
+                eglCore.swapBuffers(eglSurface);
+            }
+            playHandler.obtainMessage(MSG_VIDEO_RENDERED, videoDecoder).sendToTarget();
+        }
+
+        private void decode(TrackSource trackSource) {
+            if (trackSource != null) {
+                if (this.trackSource != trackSource) {
+                    this.trackSource = trackSource;
+                    // TODO: some like AudioTrack for video (maybe a renderer?)
+
+                    MediaFormat format = trackSource.format;
+                    int width = format.getInteger(MediaFormat.KEY_WIDTH);
+                    int height = format.getInteger(MediaFormat.KEY_HEIGHT);
+                    decodeTexture.setSize(width, height);
+
+                    if (videoDecoder.state == Decoder.STATE_UNINITIALIZED) {
+                        setupDecoder(videoDecoder, trackSource);
+                    }
+                    if (videoDecoder.mimeType == null || !videoDecoder.mimeType.equals(trackSource.mimeType)) {
+                        if (videoDecoder.state != Decoder.STATE_UNINITIALIZED) {
+                            videoDecoder.decoder.release();
+                            videoDecoder.state = Decoder.STATE_UNINITIALIZED;
+                        }
+                        setupDecoder(videoDecoder, trackSource);
+                    }
+                    if (videoDecoder.state == Decoder.STATE_INITIALIZED) {
+                        videoDecoder.decoder.configure(trackSource.format, decodeSurface, null, 0);
+                        videoDecoder.state = Decoder.STATE_CONFIGURED;
+                    }
+                    if (videoDecoder.state == Decoder.STATE_CONFIGURED) {
+                        videoDecoder.decoder.start();
+                        videoDecoder.state = Decoder.STATE_STARTED;
+                    }
+                }
+                if (videoDecoder.state != Decoder.STATE_STARTED) {
+                    throw new RuntimeException("AudioDecoder init failed.");
+                }
+
+                SourceState state = stateMap.get(trackSource);
+                MediaExtractor extractor = videoExtractors.get(trackSource.source);
+                MediaCodec decoder = videoDecoder.decoder;
+
+                if (extractor != null && state != null) {
+                    int inputIndex;
+                    int inputCount = 0;
+                    do {
+                        inputIndex = -1;
+                        if (state.timeRangeMs.isTimeInRange(state.positionMs) && !state.ended) {
+                            inputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
+                            if (inputIndex >= 0) {
+                                ByteBuffer buffer = MediaUtil.getInputBuffer(decoder, inputIndex);
+                                int buffSize = extractor.readSampleData(buffer, 0);
+                                long time = extractor.getSampleTime();
+                                int flags = extractor.getSampleFlags();
+//                                Log.d(TAG, "sampleTime: " + time);
+                                if (buffSize > 0) {
+                                    decoder.queueInputBuffer(inputIndex, 0, buffSize, time, flags);
+                                    inputCount += 1;
+                                } else {
+                                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0);
+                                    playHandler.sendEmptyMessage(MSG_VIDEO_EOS);
+                                }
+                            }
+                            if (extractor.advance()) {
+                                state.positionMs.value = TimeUtil.usToMs(extractor.getSampleTime());
+                                state.ended = false;
+                            } else {
+                                state.ended = true;
+                            }
+                        }
+                    } while (inputIndex >= 0 || state.ended);
+                    boolean decoded = false;
+                    while (!decoded) {
+                        int outputIndex = decoder.dequeueOutputBuffer(videoDecoder.bufferInfo, TIMEOUT_US);
+                        switch (outputIndex) {
+                            case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+                                break;
+                            case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                                videoDecoder.outputFormat = decoder.getOutputFormat();
+                                break;
+                            case MediaCodec.INFO_TRY_AGAIN_LATER:
+                                decoded = true;
+                                break;
+                            default:
+                                videoDecoder.presentationTimeUs = videoDecoder.bufferInfo.presentationTimeUs;
+                                playHandler.obtainMessage(MSG_VIDEO_RENDERED, videoDecoder).sendToTarget();
+                                try {
+                                    videoSem.acquire();
+                                } catch (InterruptedException e) {
+                                    return;
+                                }
+                                decoder.releaseOutputBuffer(outputIndex, true);
+                                // here will
+                                decoded = true;
+                                break;
+                        }
+                    }
+
+                    if (videoDecoder.presentationTimeUs < state.durationMs.value && !state.ended) {
+                        videoHandler.obtainMessage(MSG_DO_NEXT, trackSource).sendToTarget();
+                    }
+                }
+            }
+        }
+
+        private void setup() {
+            eglCore = new EglCore();
+            if (previewView.isAvailable()) {
+                videoHandler.obtainMessage(MSG_SET_SURFACE, previewView.getWidth(), previewView.getHeight(), new Surface(previewView.getSurfaceTexture())).sendToTarget();
+            } else {
+                videoHandler.obtainMessage(MSG_SET_SURFACE, 1, 1,null).sendToTarget();
+            }
+        }
+
+        private void setSurfaceInternal(Surface surface, int width, int height) {
+            if (eglCore == null) {
+                videoHandler.sendEmptyMessage(MSG_SETUP);
+                return;
+            }
+            if (eglSurface != null) {
+                eglCore.releaseSurface(eglSurface);
+            }
+            if (outputSurface != null && outputSurface != surface) {
+                outputSurface.release();
+                outputSurface = null;
+            }
+            if (surface == null) {
+                eglSurface = eglCore.createOffscreenSurface(1, 1);
+            } else {
+                outputSurface = surface;
+                eglSurface = eglCore.createWindowSurface(surface);
+            }
+            eglCore.makeCurrent(eglSurface);
+            GLES20.glViewport(0, 0, width, height);
+            if (decodeTexture == null) {
+                decodeTexture = new RenderTexture(RenderTexture.TEXTURE_EXTERNAL, 1, 1);
+                decodeSurface = new Surface(decodeTexture.getSurfaceTexture());
+                renderProgram = new ProgramObject(EXTERNAL_FRAGMENT_SHADER, ProgramObject.DEFAULT_UNIFORM_NAMES);
+                renderThread.start();
+            }
+        }
+    }
+
     private class AudioHandler extends Handler {
         long offsetTime = 0;
         AudioTrack audioTrack;
@@ -257,6 +479,9 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                 case MSG_DO_NEXT:
                     render((TrackSource) msg.obj);
                     break;
+                case MSG_QUIT:
+                    removeCallbacksAndMessages(null);
+                    return;
             }
             super.handleMessage(msg);
         }
@@ -280,18 +505,24 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                     audioTrack.play();
 
                     if (audioDecoder.state == Decoder.STATE_UNINITIALIZED) {
-                        setupDecoder(trackSource);
+                        setupDecoder(audioDecoder, trackSource);
                     }
                     if (audioDecoder.mimeType == null || !audioDecoder.mimeType.equals(trackSource.mimeType)) {
                         if (audioDecoder.state != Decoder.STATE_UNINITIALIZED) {
                             audioDecoder.decoder.release();
                             audioDecoder.state = Decoder.STATE_UNINITIALIZED;
                         }
-                        setupDecoder(trackSource);
+                        setupDecoder(audioDecoder, trackSource);
+                    } else {
+                        if (audioDecoder.state == Decoder.STATE_STARTED) {
+                            audioDecoder.decoder.stop();
+                            audioDecoder.state = Decoder.STATE_INITIALIZED;
+                        }
                     }
                     if (audioDecoder.state == Decoder.STATE_INITIALIZED) {
                         audioDecoder.decoder.configure(trackSource.format, null, null, 0);
                         audioDecoder.state = Decoder.STATE_CONFIGURED;
+                        audioDecoder.presentationTimeUs = 0;
                     }
                     if (audioDecoder.state == Decoder.STATE_CONFIGURED) {
                         audioDecoder.decoder.start();
@@ -308,7 +539,7 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                 if (extractor != null && state != null) {
                     int inputIndex;
                     int inputCount = 0;
-                    do {
+//                    do {
                         inputIndex = -1;
                         if (state.timeRangeMs.isTimeInRange(state.positionMs) && !state.ended) {
                             inputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
@@ -317,12 +548,13 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                                 int buffSize = extractor.readSampleData(buffer, 0);
                                 long time = extractor.getSampleTime();
                                 int flags = extractor.getSampleFlags();
-                                Log.d(TAG, "sampleTime: " + time);
+//                                Log.d(TAG, "sampleTime: " + time);
                                 if (buffSize > 0) {
                                     decoder.queueInputBuffer(inputIndex, 0, buffSize, time, flags);
                                     inputCount += 1;
                                 } else {
-                                    throw new RuntimeException("Audio Range error");
+                                    decoder.queueInputBuffer(inputIndex, 0, 0, 0, 0);
+                                    playHandler.sendEmptyMessage(MSG_AUDIO_EOS);
                                 }
                             }
                             if (extractor.advance()) {
@@ -332,8 +564,7 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                                 state.ended = true;
                             }
                         }
-                    } while (inputIndex >= 0 || state.ended);
-                    Log.d(TAG, "feed input count: " + inputCount);
+//                    } while (inputIndex >= 0 || state.ended);
                     boolean decoded = false;
                     while (!decoded) {
                         int outputIndex = decoder.dequeueOutputBuffer(audioDecoder.bufferInfo, TIMEOUT_US);
@@ -350,22 +581,34 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                                 break;
                             default:
                                 audioDecoder.presentationTimeUs = audioDecoder.bufferInfo.presentationTimeUs;
+                                playHandler.obtainMessage(MSG_AUDIO_RENDERED, audioDecoder).sendToTarget();
+                                try {
+                                    audioSem.acquire();
+                                } catch (InterruptedException e) {
+                                    return;
+                                }
                                 ByteBuffer buffer = MediaUtil.getOutputBuffer(decoder, outputIndex);
                                 final byte[] chunk = new byte[audioDecoder.bufferInfo.size];
                                 buffer.get(chunk);
                                 buffer.clear();
                                 decoder.releaseOutputBuffer(outputIndex, false);
-                                long time = SystemClock.elapsedRealtime();
-                                audioTrack.write(chunk, 0, audioDecoder.bufferInfo.size);
-                                Log.d(TAG, "Audio write time: " + (SystemClock.elapsedRealtime() - time));
+                                // TODO feed to target
+                                if ((audioDecoder.bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                                    offsetTime += audioDecoder.presentationTimeUs;
+                                    audioDecoder.presentationTimeUs = 0;
+                                } else {
+                                    audioTrack.write(chunk, 0, audioDecoder.bufferInfo.size);
+                                }
                                 decoded = true;
                                 break;
                         }
                     }
 
-                    if (audioDecoder.presentationTimeUs < state.durationMs.value) {
-                        infoView.post(() -> updateInfo(TimeUtil.usToString(audioDecoder.presentationTimeUs) + "\n" + TimeUtil.usToString(playClock.getPositionUs())));
+                    if (audioDecoder.presentationTimeUs < state.durationMs.value && !state.ended) {
+                        infoView.post(() -> updateInfo(TimeUtil.usToString(audioDecoder.presentationTimeUs + offsetTime) + "\n" +
+                                TimeUtil.usToString(playClock.getPositionUs())));
                         Message msg = audioHandler.obtainMessage(MSG_DO_NEXT, trackSource);
+                        Log.d(TAG, "presentationTimeUs: " + audioDecoder.presentationTimeUs);
 
                         if (!audioClock.isStarted()) {
                             audioClock.start();
@@ -374,14 +617,13 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
                             long operationTimeUs = TimeUtil.msToUs(SystemClock.elapsedRealtime()) - operationStartTimeUs;
                             long currentTimeUs = audioClock.getPositionUs();
                             Log.d(TAG, "currentTimeUs: " + currentTimeUs);
-                            Log.d(TAG, "presentationTimeUs: " + audioDecoder.presentationTimeUs);
                             long interval = audioDecoder.presentationTimeUs - currentTimeUs - operationTimeUs;
-                            Log.d(TAG, "interval: " + interval);
-//                        if (interval < 0) {
+//                            Log.d(TAG, "interval: " + interval);
+                        if (interval < 0) {
                             audioHandler.sendMessage(msg);
-//                        } else {
-//                            audioHandler.sendMessageDelayed(msg, TimeUtil.usToMs(interval));
-//                        }
+                        } else {
+                            audioHandler.sendMessageDelayed(msg, TimeUtil.usToMs(interval));
+                        }
 //                        audioClock.setPositionUs(audioDecoder.presentationTimeUs);
                         }
                     }
@@ -390,15 +632,15 @@ public class CommonDecodeActivity extends SampleActivity implements Handler.Call
         }
     }
 
-    private void setupDecoder(TrackSource trackSource) {
+    private void setupDecoder(Decoder decoder, TrackSource trackSource) {
         try {
-            audioDecoder.decoder = MediaCodec.createDecoderByType(trackSource.mimeType);
-            audioDecoder.state = Decoder.STATE_INITIALIZED;
-            audioDecoder.mimeType = trackSource.mimeType;
+            decoder.decoder = MediaCodec.createDecoderByType(trackSource.mimeType);
+            decoder.state = Decoder.STATE_INITIALIZED;
+            decoder.mimeType = trackSource.mimeType;
         } catch (IOException e) {
             e.printStackTrace();
-            audioDecoder.decoder = null;
-            audioDecoder.state = Decoder.STATE_UNINITIALIZED;
+            decoder.decoder = null;
+            decoder.state = Decoder.STATE_UNINITIALIZED;
         }
     }
 

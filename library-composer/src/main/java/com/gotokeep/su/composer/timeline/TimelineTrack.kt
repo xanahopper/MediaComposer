@@ -9,10 +9,10 @@ import com.gotokeep.su.composer.time.TimeRange
  * @version 1.0
  * @since 2018/6/18 07:30
  */
-class TimelineTrack<T : TimelineItem>(@field:TrackType
-                                      private val trackType: Int) {
+class TimelineTrack(@field:TrackType
+                                      val trackType: Int) {
 
-    private val items = mutableListOf<T>()
+    val items = mutableListOf<TimelineItem>()
     private val timeRange = TimeRange(Time.ZERO, Time.ZERO)
 
     @IntDef(TRACK_TYPE_SOURCE, TRACK_TYPE_TRANSITION, TRACK_TYPE_FILTER, TRACK_TYPE_LAYER)
@@ -23,12 +23,12 @@ class TimelineTrack<T : TimelineItem>(@field:TrackType
         items.clear()
     }
 
-    fun addItem(item: T) {
+    fun addItem(item: TimelineItem) {
         items.add(item)
         updateTimeRange()
     }
 
-    fun removeItem(item: T) {
+    fun removeItem(item: TimelineItem) {
         items.remove(item)
         updateTimeRange()
     }

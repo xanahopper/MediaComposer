@@ -12,5 +12,13 @@ public interface Timeline {
 
     void addTrack(TimelineTrack track);
 
+    TimelineTrack getSourceTrack();
+
+    TimelineTrack getAudioTrack();
+
+    int getTrackCount();
+
+    TimelineTrack getTrack(int index);
+
     TimelineTrack[] getTracksAtTime(long timeMs);
 }

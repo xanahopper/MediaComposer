@@ -3,16 +3,13 @@ package com.gotokeep.su.composer.source;
 import android.media.MediaFormat;
 import android.net.Uri;
 import android.support.annotation.IntDef;
-import android.support.annotation.NonNull;
 
+import com.gotokeep.su.composer.composition.CompositionSegment;
 import com.gotokeep.su.composer.time.Time;
-import com.gotokeep.su.composer.time.TimeMapping;
 import com.gotokeep.su.composer.time.TimeRange;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * @author xana/cuixianming
@@ -37,7 +34,6 @@ public class MediaTrack {
     protected String mimeType;
     protected MediaFormat format;
     protected TimeRange timeRange;
-    protected List<MediaTrackSegment> segments = new ArrayList<>();
 
     public MediaTrack(Uri source, @TrackType int trackType, int trackIndex, String mimeType, Time duration,
                       MediaFormat format) {
@@ -57,11 +53,6 @@ public class MediaTrack {
         this.mimeType = mimeType;
         this.timeRange = timeRange;
         this.format = format;
-    }
-
-    @SuppressWarnings("unchecked")
-    public void generateSegments() {
-        segments.add(new MediaTrackSegment(new TimeMapping(timeRange, timeRange), false));
     }
 
     public Uri getSource() {
@@ -84,26 +75,7 @@ public class MediaTrack {
         return trackType;
     }
 
-    public List<MediaTrackSegment> getSegments() {
-        return segments;
-    }
-
-    @SuppressWarnings("unchecked")
-    public MediaTrackSegment[] getSegmentAtTime(Time time) {
-        List<MediaTrackSegment> result = new ArrayList<>();
-        for (MediaTrackSegment segment : segments) {
-            if (segment.timeMapping.target.isTimeInRange(time)) {
-                result.add(segment);
-            }
-        }
-        return (MediaTrackSegment[]) result.toArray();
-    }
-
-    public Time getSamplePresentationTimeForTrackTime(MediaTrackSegment segment, Time trackTime) {
-        if (segment != null) {
-            return segment.timeMapping.mapToSource(trackTime);
-        } else {
-            return Time.INVALID_TIME;
-        }
+    public MediaFormat getFormat() {
+        return format;
     }
 }

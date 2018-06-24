@@ -177,11 +177,11 @@ public final class RenderTexture implements SurfaceTexture.OnFrameAvailableListe
         GLES20.glBindTexture(textureTarget, 0);
     }
 
-    public boolean awaitFrameAvailable() {
+    public boolean awaitFrameAvailable() throws InterruptedException {
         return awaitFrameAvailable(0);
     }
 
-    public boolean awaitFrameAvailable(int timeoutMs) {
+    public boolean awaitFrameAvailable(int timeoutMs) throws InterruptedException {
         if (surfaceTexture == null) {
             return true;
         }
@@ -192,14 +192,13 @@ public final class RenderTexture implements SurfaceTexture.OnFrameAvailableListe
                 } catch (InterruptedException e) {
                     // shouldn't happen
                     Log.w(TAG, "awaitFrameAvailable with interrupted, it shouldn't happen", e);
+                    throw e;
                 }
                 if (timeoutMs > 0) {
                     return false;
                 }
             }
-            frameAvailable = false;
         }
-        surfaceTexture.updateTexImage();
         return true;
     }
 

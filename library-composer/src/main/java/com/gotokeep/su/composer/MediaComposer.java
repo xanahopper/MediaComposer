@@ -11,11 +11,9 @@ import com.gotokeep.su.composer.timeline.Timeline;
 public interface MediaComposer {
     void setTimeline(Timeline timeline);
 
-    void setTarget(ComposerTarget target);
+    void setTarget(ComposerOutput target);
 
     void start();
-
-    void pause();
 
     void stop();
 

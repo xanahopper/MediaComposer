@@ -31,24 +31,28 @@ public class VideoInputNode extends VideoRenderNode {
             "void main() { \n" +
             "    gl_FragColor = texture2D(uTexture, vTexCoords);\n" +
             "}\n";
-
-    @IntDef({PREVIEW_MODE, EXPORT_MODE})
-    @Retention(RetentionPolicy.SOURCE)
-    public @interface RenderMode {
-    }
-
+    private final RenderEngine renderEngine;
     private final VideoRenderSource source;
     private final RenderTexture decodeTexture;
-    private RenderUniform decodeUniform;
+    private RenderUniform decodeUniforms[];
+    private RenderTexture sourceTextures[];
     @RenderMode
     private int renderMode;
-
-    public VideoInputNode(VideoRenderSource source, @RenderMode int renderMode) {
+    public VideoInputNode(RenderEngine renderEngine, VideoRenderSource source, @RenderMode int renderMode) {
         super();
+        this.renderEngine = renderEngine;
         this.source = source;
         this.decodeTexture = source.getSourceTexture();
+        this.sourceTextures = new RenderTexture[]{decodeTexture};
         this.renderMode = renderMode;
-        decodeUniform = new RenderUniform(RenderUniform.TYPE_INT, DECODE_TEXTURE);
+        decodeUniforms = new RenderUniform[] {
+                new RenderUniform(ProgramObject.UNIFORM_TEXTURE, RenderUniform.TYPE_INT, DECODE_TEXTURE)
+        };
+    }
+
+    @Override
+    public void release() {
+
     }
 
     public void setRenderMode(@RenderMode int renderMode) {
@@ -66,17 +70,19 @@ public class VideoInputNode extends VideoRenderNode {
                 return;
             }
         } else if (renderMode == EXPORT_MODE) {
-            if (!decodeTexture.awaitFrameAvailable(EXPORT_FRAME_WAIT_TIME_MS)) {
-                targetFrameAvailable = false;
-                return;
+            try {
+                if (!decodeTexture.awaitFrameAvailable(EXPORT_FRAME_WAIT_TIME_MS)) {
+                    targetFrameAvailable = false;
+                    return;
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
         if (renderProgram != null) {
-            renderProgram.use(AttributeData.DEFAULT_ATTRIBUTE_DATA);
-            decodeTexture.bind(DECODE_TEXTURE);
-            renderProgram.setUniform(ProgramObject.UNIFORM_TEXTURE, decodeUniform);
-            AttributeData.DEFAULT_ATTRIBUTE_DATA.draw();
-            targetFrameAvailable = true;
+            RenderRequest request = RenderRequest.obtain(sourceTextures, AttributeData.DEFAULT_ATTRIBUTE_DATA,
+                    renderProgram, decodeUniforms, targetTexture, renderTimeUs.value, source.getVideoSize());
+            renderEngine.sendRequest(request);
         }
 //        source.requestDecode(renderTimeUs);
     }
@@ -84,5 +90,10 @@ public class VideoInputNode extends VideoRenderNode {
     @Override
     protected ProgramObject createRenderProgram() {
         return new ProgramObject(EXTERNAL_FRAGMENT_SHADER, ProgramObject.DEFAULT_UNIFORM_NAMES);
+    }
+
+    @IntDef({PREVIEW_MODE, EXPORT_MODE})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface RenderMode {
     }
 }

@@ -151,8 +151,8 @@ public final class ProgramObject {
         return uniforms.containsKey(name) ? uniforms.get(name) : -1;
     }
 
-    public void setUniform(String name, RenderUniform uniform) {
-        int loc = getUniformLocation(name);
+    public void setUniform(RenderUniform uniform) {
+        int loc = getUniformLocation(uniform.name);
         if (loc >= 0) {
             switch (uniform.type) {
                 case RenderUniform.TYPE_INT:

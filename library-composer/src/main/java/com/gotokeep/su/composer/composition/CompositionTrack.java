@@ -5,10 +5,12 @@ import android.net.Uri;
 import android.support.annotation.Nullable;
 
 import com.gotokeep.su.composer.source.MediaTrack;
-import com.gotokeep.su.composer.source.MediaTrackSegment;
 import com.gotokeep.su.composer.time.Time;
 import com.gotokeep.su.composer.time.TimeMapping;
 import com.gotokeep.su.composer.time.TimeRange;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A track in a composition object, consisting of a media type, a track identifier, and track segments.
@@ -20,6 +22,9 @@ import com.gotokeep.su.composer.time.TimeRange;
  * @since 2018/6/18 06:55
  */
 public class CompositionTrack extends MediaTrack {
+
+    private final List<CompositionSegment> segments = new ArrayList<>();
+    private final List<CompositionInstruction> instructions = new ArrayList<>();
 
     public CompositionTrack(Uri source, int trackType, int trackIndex, String mimeType, TimeRange timeRange,
                             MediaFormat format) {
@@ -39,27 +44,41 @@ public class CompositionTrack extends MediaTrack {
         super(null, trackType, trackIndex, null, timeRange, null);
     }
 
+    public void addSegment(MediaTrack sourceTrack, TimeRange sourceTimeRange) {
+        addSegment(sourceTrack, sourceTimeRange, sourceTimeRange.start);
+    }
+
     public void addSegment(MediaTrack sourceTrack, TimeRange sourceTimeRange, Time atTime) {
         checkTrackType(sourceTrack);
         TimeRange targetRange = new TimeRange(Time.isInvalid(atTime) ? timeRange.getRangeEnd() : atTime,
                 sourceTimeRange.duration);
-        addSegment(new MediaTrackSegment(sourceTrack, new TimeMapping(sourceTimeRange, targetRange)));
+        addSegment(new CompositionSegment(sourceTrack, new TimeMapping(sourceTimeRange, targetRange)));
     }
 
     public void addSegment(MediaTrack sourceTrack, TimeRange sourceTimeRange, float scale, Time atTime) {
         checkTrackType(sourceTrack);
         TimeRange targetTimeRange = new TimeRange(Time.isInvalid(atTime) ? timeRange.getRangeEnd() : atTime,
                 sourceTimeRange.duration.multiply(scale));
-        addSegment(new MediaTrackSegment(sourceTrack, new TimeMapping(sourceTimeRange, targetTimeRange)));
+        addSegment(new CompositionSegment(sourceTrack, new TimeMapping(sourceTimeRange, targetTimeRange)));
     }
 
-    public void addSegment(MediaTrackSegment segment) {
+    public void addSegment(CompositionSegment segment) {
         checkTrackType(segment.getSourceTrack());
         Time rangeEnd = timeRange.getRangeEnd();
-        if (rangeEnd.compareTo(segment.getTimeMapping().target.start) != 0) {
-            segments.add(segment);
-            timeRange.duration = timeRange.duration.add(segment.getTimeMapping().target.duration);
+        Time duration = segment.getTimeMapping().target.getRangeEnd();
+        if (rangeEnd.compareTo(duration) < 0) {
+            timeRange.duration = duration;
         }
+        segments.add(segment);
+    }
+
+    public void addInstruction(CompositionInstruction instruction) {
+        Time rangeEnd = timeRange.getRangeEnd();
+        Time duration = instruction.getTimeRange().getRangeEnd();
+        if (rangeEnd.compareTo(duration) < 0) {
+            timeRange.duration = duration;
+        }
+        instructions.add(instruction);
     }
 
     private void checkTrackType(MediaTrack sourceTrack) {
@@ -77,5 +96,11 @@ public class CompositionTrack extends MediaTrack {
         return timeRange;
     }
 
-
+    public Time getSamplePresentationTimeForTrackTime(CompositionSegment segment, Time trackTime) {
+        if (segment != null) {
+            return segment.timeMapping.mapToSource(trackTime);
+        } else {
+            return Time.INVALID_TIME;
+        }
+    }
 }

@@ -7,9 +7,11 @@ package com.gotokeep.su.composer.demo.source;
  */
 public class SourceProvider {
     public static final String[] VIDEO_SRC = new String[] {
+            "/sdcard/WeiboInternational/weiboIntl_video/{4200551022889037}_weibo.mp4",
+            "/sdcard/WeiboInternational/weiboIntl_video/{4178268946738457}_weibo.mp4",
             "/sdcard/DCIM/KeepStory/Demo/2f7975531356f0683670c7ccde98c9dea6dae39d.mp4",
-            "/sdcard/DCIM/KeepStory/Demo/compress.mp4",
-            "/sdcard/DCIM/KeepStory/Demo/1406778193eb49388a683658acd91959fc31c1fe.mp4",
+//            "/sdcard/DCIM/KeepStory/Demo/compress.mp4",
+//            "/sdcard/DCIM/KeepStory/Demo/1406778193eb49388a683658acd91959fc31c1fe.mp4",
     };
     public static final String[] IMAGE_SRC = new String[] {
             "/sdcard/Pictures/CoolMarket/fde57442657cf3c37c737a6f0d832da7.jpg",

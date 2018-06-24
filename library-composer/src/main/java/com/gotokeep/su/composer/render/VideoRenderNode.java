@@ -1,6 +1,6 @@
 package com.gotokeep.su.composer.render;
 
-import android.support.annotation.CallSuper;
+import android.view.Surface;
 
 import com.gotokeep.su.composer.gles.ProgramObject;
 import com.gotokeep.su.composer.gles.RenderTexture;
@@ -11,7 +11,7 @@ import com.gotokeep.su.composer.time.Time;
  * @version 1.0
  * @since 2018/6/21 12:03
  */
-public abstract class VideoRenderNode implements VideoRenderTarget {
+public abstract class VideoRenderNode {
     protected RenderTexture targetTexture;
     protected boolean targetFrameAvailable = false;
     protected ProgramObject renderProgram;
@@ -20,12 +20,11 @@ public abstract class VideoRenderNode implements VideoRenderTarget {
         renderProgram = createRenderProgram();
     }
 
-    public RenderTexture getTargetTexture() {
+    public RenderTexture getTargetRenderTexture() {
         return targetTexture;
     }
 
-    @Override
-    public void setCurrentTarget() {
+    public void makeCurrentTarget() {
         if (targetTexture != null) {
             targetTexture.setRenderTarget();
         } else {
@@ -33,7 +32,6 @@ public abstract class VideoRenderNode implements VideoRenderTarget {
         }
     }
 
-    @Override
     public boolean isTargetFrameAvailable() {
         return targetFrameAvailable;
     }

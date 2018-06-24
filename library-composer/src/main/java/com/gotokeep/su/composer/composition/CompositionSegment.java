@@ -1,5 +1,6 @@
-package com.gotokeep.su.composer.source;
+package com.gotokeep.su.composer.composition;
 
+import com.gotokeep.su.composer.source.MediaTrack;
 import com.gotokeep.su.composer.time.TimeMapping;
 import com.gotokeep.su.composer.time.TimeRange;
 
@@ -8,12 +9,12 @@ import com.gotokeep.su.composer.time.TimeRange;
  * @version 1.0
  * @since 2018/6/18 22:08
  */
-public class MediaTrackSegment {
+public class CompositionSegment {
     protected TimeMapping timeMapping;
     protected boolean empty;
     protected MediaTrack sourceTrack;
 
-    public MediaTrackSegment(TimeMapping timeMapping, boolean empty) {
+    public CompositionSegment(TimeMapping timeMapping, boolean empty) {
         this.timeMapping = timeMapping;
         this.empty = empty;
     }
@@ -25,19 +26,20 @@ public class MediaTrackSegment {
     public boolean isEmpty() {
         return empty;
     }
-    public MediaTrackSegment(MediaTrack sourceTrack, TimeRange sourceTimeRange, TimeRange targetTimeTimeRange) {
+
+    public CompositionSegment(MediaTrack sourceTrack, TimeRange sourceTimeRange, TimeRange targetTimeTimeRange) {
         this(sourceTrack, new TimeMapping(sourceTimeRange, targetTimeTimeRange));
     }
 
-    public MediaTrackSegment(TimeRange timeRange) {
+    public CompositionSegment(TimeRange timeRange) {
         this(null, new TimeMapping(timeRange, timeRange));
     }
 
-    public MediaTrackSegment(MediaTrack sourceTrack, TimeMapping timeMapping) {
+    public CompositionSegment(MediaTrack sourceTrack, TimeMapping timeMapping) {
         this(sourceTrack, timeMapping, !TimeMapping.isValid(timeMapping) || sourceTrack == null);
     }
 
-    public MediaTrackSegment(MediaTrack sourceTrack, TimeMapping timeMapping, boolean empty) {
+    public CompositionSegment(MediaTrack sourceTrack, TimeMapping timeMapping, boolean empty) {
         this(timeMapping, empty);
         this.sourceTrack = sourceTrack;
     }
@@ -46,7 +48,7 @@ public class MediaTrackSegment {
         return sourceTrack;
     }
 
-    public static MediaTrackSegment createEmpty(TimeRange timeRange) {
-        return new MediaTrackSegment(null, new TimeMapping(timeRange, timeRange), true);
+    public static CompositionSegment createEmpty(TimeRange timeRange) {
+        return new CompositionSegment(null, new TimeMapping(timeRange, timeRange), true);
     }
 }

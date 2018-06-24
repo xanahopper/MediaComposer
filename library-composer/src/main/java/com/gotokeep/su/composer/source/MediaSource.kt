@@ -36,12 +36,11 @@ internal class MediaSource(private val filePath: String) {
             val mime = format.getString(MediaFormat.KEY_MIME)
             var trackType = MediaTrack.TYPE_INVALID
             if (mime != null) {
-                if (mime.startsWith("video/")) {
-                    trackType = MediaTrack.TYPE_VISUAL
-                } else if (mime.startsWith("audio/")) {
-                    trackType = MediaTrack.TYPE_AUDIBLE
-                } else if (mime.startsWith("text/")) {
-                    trackType = MediaTrack.TYPE_METADATA
+                trackType = when {
+                    mime.startsWith("video/") -> MediaTrack.TYPE_VISUAL
+                    mime.startsWith("audio/") -> MediaTrack.TYPE_AUDIBLE
+                    mime.startsWith("text/") -> MediaTrack.TYPE_METADATA
+                    else -> MediaTrack.TYPE_INVALID
                 }
             }
             if (trackType >= 0) {
@@ -50,7 +49,6 @@ internal class MediaSource(private val filePath: String) {
                     duration = Time(format.getLong(MediaFormat.KEY_DURATION))
                 }
                 val track = MediaTrack(Uri.parse(filePath), trackType, i, mime, duration, format)
-                track.generateSegments()
                 tracks.add(track)
             }
         }
