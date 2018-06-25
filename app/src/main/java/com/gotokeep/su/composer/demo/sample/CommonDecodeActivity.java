@@ -497,10 +497,20 @@ public class CommonDecodeActivity extends SampleActivity implements TextureView.
                     }
                     MediaFormat format = trackSource.format;
                     int sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-                    int buffSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO,
+                    int channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                    int channelConfig = AudioFormat.CHANNEL_OUT_DEFAULT;
+                    switch (channelCount) {
+                        case 1:
+                            channelConfig = AudioFormat.CHANNEL_OUT_MONO;
+                            break;
+                        case 2:
+                            channelConfig = AudioFormat.CHANNEL_OUT_STEREO;
+                            break;
+                    }
+                    int buffSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig,
                             AudioFormat.ENCODING_PCM_16BIT);
                     audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate,
-                            AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT,
+                            channelConfig, AudioFormat.ENCODING_PCM_16BIT,
                             buffSize, AudioTrack.MODE_STREAM);
                     audioTrack.play();
 

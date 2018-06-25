@@ -27,7 +27,7 @@ class ImageSource {
             BitmapFactory.decodeStream(new BufferedInputStream(new FileInputStream(filePath)), null, opt);
             track = new MediaTrack(Uri.parse(filePath), MediaTrack.TYPE_VISUAL, 0, mimeType, Time.INVALID_TIME,
                     MediaFormat.createVideoFormat(mimeType, opt.outWidth, opt.outHeight));
-            track.generateSegments();
+//            track.generateSegments();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }

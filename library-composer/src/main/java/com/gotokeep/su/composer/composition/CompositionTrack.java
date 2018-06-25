@@ -96,6 +96,10 @@ public class CompositionTrack extends MediaTrack {
         return timeRange;
     }
 
+    public List<CompositionSegment> getSegments() {
+        return segments;
+    }
+
     public Time getSamplePresentationTimeForTrackTime(CompositionSegment segment, Time trackTime) {
         if (segment != null) {
             return segment.timeMapping.mapToSource(trackTime);

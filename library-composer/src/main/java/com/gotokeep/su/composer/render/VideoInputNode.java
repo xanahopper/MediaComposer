@@ -50,11 +50,6 @@ public class VideoInputNode extends VideoRenderNode {
         };
     }
 
-    @Override
-    public void release() {
-
-    }
-
     public void setRenderMode(@RenderMode int renderMode) {
         this.renderMode = renderMode;
     }

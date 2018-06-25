@@ -66,8 +66,8 @@ public final class VideoRenderSource {
     }
 
     public void requestDecode(DecodeEngine decodeEngine, Time renderTimeUs) {
-        DecodeRequest request = DecodeRequest.obtain(sourceTrackSegment, sourceExtractor, renderTimeUs.value);
-        decodeEngine.sendVideoRequest(request, sourceTexture.getSurface());
+        DecodeRequest request = DecodeRequest.obtain(sourceTrackSegment, sourceExtractor, sourceTexture.getSurface(), renderTimeUs.value);
+        decodeEngine.sendVideoRequest(request);
         try {
             sourceTexture.awaitFrameAvailable();
         } catch (InterruptedException e) {
